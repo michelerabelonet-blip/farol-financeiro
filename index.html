@@ -10,8 +10,8 @@
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<meta name="apple-mobile-web-app-title" content="Farol Fin">
-<title>Farol Financeiro</title>
+<meta name="apple-mobile-web-app-title" content="Financeiro">
+<title>Financeiro</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,700;12..96,800&family=Atkinson+Hyperlegible:wght@400;700&display=swap">
@@ -108,6 +108,7 @@ section.block{margin-top:26px}
 .check[aria-pressed="true"] svg{opacity:1}
 .row-main{min-width:0;background:none;border:0;text-align:left;padding:0}
 .row-title{font-weight:700;overflow-wrap:anywhere}
+.row-main .row-title::after{content:" \270E";font-weight:400;color:var(--muted);font-size:.85em}
 .row.pago .row-title{text-decoration:line-through;text-decoration-color:var(--muted);color:var(--muted)}
 .row-meta{font-size:.78rem;color:var(--muted);display:flex;flex-wrap:wrap;gap:2px 8px}
 .tag-ex{font-size:.68rem;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--beam);border:1px solid var(--beam);border-radius:4px;padding:0 4px}
@@ -184,8 +185,8 @@ label.f input,label.f select{font-size:1rem;font-weight:400;color:var(--ink);bac
   <div class="wrap">
     <div class="brand">
       <h1>
-        <svg width="38" height="38" viewBox="0 0 440 440" aria-hidden="true"><defs><clipPath id="logoSq"><rect width="440" height="440" rx="100"/></clipPath></defs><g clip-path="url(#logoSq)"><rect width="440" height="440" rx="100" fill="#1B3A52"/><path d="M205 150 L440 70 L440 250 Z" fill="#E39A2D" opacity="0.9"/><circle cx="350" cy="160" r="52" fill="#FBEBD2" stroke="#E39A2D" stroke-width="8"/><text x="350" y="178" text-anchor="middle" font-family="Arial, Helvetica, sans-serif" font-weight="700" font-size="46" fill="#10283A">R$</text><path d="M150 105 L190 70 L230 105 Z" fill="#E39A2D"/><rect x="155" y="105" width="70" height="60" rx="6" fill="#F2F5F7"/><rect x="170" y="118" width="40" height="34" rx="4" fill="#E39A2D"/><path d="M150 165 L230 165 L250 360 L130 360 Z" fill="#F2F5F7"/><path d="M144 220 L236 220 L240 255 L140 255 Z" fill="#C8435A"/><path d="M136 295 L244 295 L248 330 L132 330 Z" fill="#C8435A"/><rect x="95" y="360" width="190" height="22" rx="11" fill="#F2F5F7"/></g></svg>
-        Farol Financeiro
+        <img src="/icons/icon-192.png" width="38" height="38" alt="" style="border-radius:10px;display:block">
+        Financeiro
       </h1>
       <div class="sync" id="sync">Carregando…</div>
     </div>
@@ -275,7 +276,7 @@ label.f input,label.f select{font-size:1rem;font-weight:400;color:var(--ink);bac
 <div class="pinwrap" id="pinwrap" hidden>
   <form class="pinbox" id="pinForm" novalidate>
     <img src="/icons/icon-192.png" width="84" height="84" alt="" style="border-radius:22px">
-    <h2>Farol Financeiro</h2>
+    <h2>Financeiro</h2>
     <p>Digite o código da casa</p>
     <input id="pinIn" type="password" inputmode="numeric" autocomplete="off" aria-label="Código da casa">
     <p class="err" id="pinErr" hidden>Código incorreto. Tente de novo.</p>

@@ -1,6 +1,6 @@
 {
-  "name": "Farol Financeiro",
-  "short_name": "Farol Fin",
+  "name": "Financeiro",
+  "short_name": "Financeiro",
   "description": "Despesas da casa divididas pela renda de cada um",
   "lang": "pt-BR",
   "start_url": "/",

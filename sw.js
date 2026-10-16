@@ -1,5 +1,5 @@
 // Guarda a "casca" do app para abrir rápido; os dados (/api) sempre vêm do servidor.
-const CACHE = 'farol-financeiro-v1';
+const CACHE = 'financeiro-v2';
 const SHELL = ['/', '/manifest.webmanifest', '/icons/icon-192.png', '/icons/icon-512.png'];
 
 self.addEventListener('install', (e) => {
