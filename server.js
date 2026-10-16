@@ -8,6 +8,7 @@ const app = express();
 app.use(express.json({ limit: '1mb' }));
 
 const PIN = process.env.APP_PIN || '';
+const DATA_KEY = process.env.DATA_KEY || 'casa';
 let seed;
 try { seed = require('./seed.json'); } catch (e) {
   seed = { config: { a: { nome: 'Ele', renda: 0 }, b: { nome: 'Ela', renda: 0 } }, itens: [], pagos: {} };
@@ -27,7 +28,7 @@ const FILE = path.join(process.env.DATA_DIR || __dirname, 'data.json');
 async function load() {
   if (pool) {
     await pool.query('CREATE TABLE IF NOT EXISTS farol_financeiro (id text PRIMARY KEY, dados jsonb NOT NULL)');
-    const r = await pool.query("SELECT dados FROM farol_financeiro WHERE id = 'casa'");
+    const r = await pool.query("SELECT dados FROM farol_financeiro WHERE id = $1", [DATA_KEY]);
     return r.rows[0] ? r.rows[0].dados : clone(seed);
   }
   try { return JSON.parse(fs.readFileSync(FILE, 'utf8')); } catch (e) { return clone(seed); }
@@ -35,8 +36,8 @@ async function load() {
 async function save(s) {
   if (pool) {
     await pool.query(
-      "INSERT INTO farol_financeiro (id, dados) VALUES ('casa', $1) ON CONFLICT (id) DO UPDATE SET dados = EXCLUDED.dados",
-      [JSON.stringify(s)]
+      "INSERT INTO farol_financeiro (id, dados) VALUES ($2, $1) ON CONFLICT (id) DO UPDATE SET dados = EXCLUDED.dados",
+      [JSON.stringify(s), DATA_KEY]
     );
     return;
   }
@@ -137,22 +138,60 @@ app.put('/api/pagos/:mes', rota(async (req, res) => {
 }));
 
 // Arquivos do app (todos na raiz do repositório)
-const PUBLICOS = {
-  '/': ['index.html', 'text/html; charset=utf-8', true],
-  '/index.html': ['index.html', 'text/html; charset=utf-8', true],
-  '/sw.js': ['sw.js', 'text/javascript; charset=utf-8', true],
-  '/manifest.webmanifest': ['manifest.webmanifest', 'application/manifest+json', true],
-  '/icons/icon-192.png': ['icon-192.png', 'image/png'],
-  '/icons/icon-512.png': ['icon-512.png', 'image/png'],
-  '/icons/icon-maskable-512.png': ['icon-maskable-512.png', 'image/png'],
-  '/icons/apple-touch-icon.png': ['apple-touch-icon.png', 'image/png'],
-  '/apple-touch-icon.png': ['apple-touch-icon.png', 'image/png'],
+// Cada serviço no Render pode ter nome, modo e ícone próprios:
+//   APP_NAME  (padrão "Financeiro Farol")   APP_SHORT (padrão "Fin. Farol")
+//   APP_MODE  ("casal" ou "solo")          ICON_SET  ("", "pessoal" ou "michele")
+const APP_NAME = process.env.APP_NAME || 'Financeiro Farol';
+const APP_SHORT = process.env.APP_SHORT || 'Fin. Farol';
+const SOLO = (process.env.APP_MODE || '').toLowerCase() === 'solo';
+// Temas: '' = família ($ azul), 'pessoal' = gráfico verde, 'michele' = cofrinho vinho
+const TEMAS = {
+  '': { suf: '', cor: '#10283A' },
+  pessoal: { suf: '-p', cor: '#0B2A22', night: ['#0E3A2E', '#06201A'] },
+  michele: { suf: '-m', cor: '#2E0F24', night: ['#4A1838', '#1E0918'] },
 };
-app.get(Object.keys(PUBLICOS), (req, res) => {
-  const [arq, tipo, semCache] = PUBLICOS[req.path];
-  res.type(tipo);
-  res.setHeader('Cache-Control', semCache ? 'no-cache' : 'public, max-age=604800');
-  res.sendFile(path.join(__dirname, arq));
+const TEMA = TEMAS[(process.env.ICON_SET || '').toLowerCase()] || TEMAS[''];
+const ICONES = TEMA.suf;
+const COR = TEMA.cor;
+const escHtml = (t) => String(t).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+
+let paginaCache = null;
+function pagina() {
+  if (!paginaCache) {
+    paginaCache = fs.readFileSync(path.join(__dirname, 'index.html'), 'utf8')
+      .split('Financeiro Farol').join(escHtml(APP_NAME))
+      .split('#10283A">').join(COR + '">');
+    if (TEMA.night) paginaCache = paginaCache.split('--night:#10283A').join('--night:' + TEMA.night[0]).split('--night:#071219').join('--night:' + TEMA.night[1]);
+  }
+  return paginaCache;
+}
+const semCache = (res) => res.setHeader('Cache-Control', 'no-cache');
+
+app.get(['/', '/index.html'], (req, res) => { semCache(res); res.type('html').send(pagina()); });
+app.get('/app-config.js', (req, res) => {
+  semCache(res);
+  res.type('js').send('window.APP=' + JSON.stringify({ name: APP_NAME, solo: SOLO }) + ';');
+});
+app.get('/manifest.webmanifest', (req, res) => {
+  semCache(res);
+  res.type('application/manifest+json').send(JSON.stringify({
+    name: APP_NAME, short_name: APP_SHORT, description: SOLO ? 'Minhas despesas e minha renda' : 'Despesas da casa divididas pela renda de cada um',
+    lang: 'pt-BR', start_url: '/', scope: '/', display: 'standalone', orientation: 'portrait',
+    background_color: COR, theme_color: COR,
+    icons: [
+      { src: '/icons/icon-192.png', sizes: '192x192', type: 'image/png', purpose: 'any' },
+      { src: '/icons/icon-512.png', sizes: '512x512', type: 'image/png', purpose: 'any' },
+      { src: '/icons/icon-maskable-512.png', sizes: '512x512', type: 'image/png', purpose: 'maskable' },
+    ],
+  }));
+});
+app.get('/sw.js', (req, res) => { semCache(res); res.type('js').sendFile(path.join(__dirname, 'sw.js')); });
+const ICONE = { 'icon-192.png': 1, 'icon-512.png': 1, 'icon-maskable-512.png': 1, 'apple-touch-icon.png': 1 };
+app.get(['/icons/:arq', '/apple-touch-icon.png'], (req, res) => {
+  const arq = req.params.arq || 'apple-touch-icon.png';
+  if (!ICONE[arq]) return res.sendStatus(404);
+  res.setHeader('Cache-Control', 'no-cache');
+  res.type('png').sendFile(path.join(__dirname, arq.replace('.png', ICONES + '.png')));
 });
 
 const PORT = process.env.PORT || 3000;

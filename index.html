@@ -4,6 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <meta name="theme-color" content="#10283A">
+<script src="/app-config.js"></script>
 <link rel="manifest" href="/manifest.webmanifest">
 <link rel="icon" type="image/png" href="/icons/icon-192.png">
 <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png">
@@ -233,12 +234,12 @@ label.f input,label.f select{font-size:1rem;font-weight:400;color:var(--ink);bac
           <label class="f">Nome<input id="nA" autocomplete="off"></label>
           <label class="f">Renda mensal<input id="rA" inputmode="decimal" class="num"></label>
         </div>
-        <div class="inc-row">
+        <div class="inc-row" id="incB">
           <label class="f">Nome<input id="nB" autocomplete="off"></label>
           <label class="f">Renda mensal<input id="rB" inputmode="decimal" class="num"></label>
         </div>
         <div class="ratio" id="ratio"></div>
-        <p class="hint" style="margin:0">Na divisão proporcional, cada um paga a mesma porcentagem da própria renda. As alterações valem para todos os meses.</p>
+        <p class="hint" id="incHint" style="margin:0">Na divisão proporcional, cada um paga a mesma porcentagem da própria renda. As alterações valem para todos os meses.</p>
       </div>
     </section>
   </div>
@@ -261,7 +262,7 @@ label.f input,label.f select{font-size:1rem;font-weight:400;color:var(--ink);bac
       <label class="f">Parcela deste mês<input id="fAtual" inputmode="numeric" class="num" placeholder="1"></label>
     </div>
     <p class="hint" id="tipoHint"></p>
-    <label class="f">Quem paga<select id="fDiv"></select></label>
+    <label class="f" id="lDiv">Quem paga<select id="fDiv"></select></label>
     <div class="split" id="fSplit" aria-live="polite"></div>
     <p class="err" id="fErr" hidden></p>
     <div class="sheet-actions">
@@ -285,6 +286,7 @@ label.f input,label.f select{font-size:1rem;font-weight:400;color:var(--ink);bac
 </div>
 <script>
 (function(){
+const SOLO = !!(window.APP && window.APP.solo);
 const CAT = {
   fixa:{nome:'Despesas fixas',curto:'Fixa',cor:'var(--c-fixa)',hint:'Repete todo mês a partir deste mês.'},
   variavel:{nome:'Despesas variáveis',curto:'Variável',cor:'var(--c-variavel)',hint:'Excedente deste mês, além do previsto nas fixas: uma compra a mais no supermercado, o açougue do churrasco, uma ida extra ao sacolão. Vale só para este mês.'},
@@ -371,11 +373,12 @@ function ativoNoMes(it, mes){
 }
 function ratioA(){ const a=+state.config.a.renda||0,b=+state.config.b.renda||0; return (a+b)>0 ? a/(a+b) : .5 }
 function partes(it){
+  if(SOLO) return {a:+it.valor||0,b:0};
   const v=+it.valor||0;
   const r = it.divisao==='a'?1 : it.divisao==='b'?0 : it.divisao==='metade'?.5 : ratioA();
   return {a:v*r,b:v*(1-r)};
 }
-function divLabel(d){ return d==='a'?'Só '+state.config.a.nome : d==='b'?'Só '+state.config.b.nome : d==='metade'?'Meio a meio':'Proporcional' }
+function divLabel(d){ if(SOLO) return 'Mensal'; return d==='a'?'Só '+state.config.a.nome : d==='b'?'Só '+state.config.b.nome : d==='metade'?'Meio a meio':'Proporcional' }
 
 /* ---------- render ---------- */
 function render(){
@@ -409,7 +412,9 @@ function render(){
       <div class="meter"><span style="width:${Math.min(uso,1)*100}%"></span></div>
       <div class="foot num">${pct(uso)} da própria renda</div></div>`;
   };
-  $('couple').innerHTML = pessoa(a,pa,total?pa/total:0)+pessoa(b,pb,total?pb/total:0);
+  $('couple').innerHTML = SOLO ? pessoa(a,pa,1) : pessoa(a,pa,total?pa/total:0)+pessoa(b,pb,total?pb/total:0);
+  $('couple').style.gridTemplateColumns = SOLO ? '1fr' : '';
+  if(SOLO){ $('explain').textContent = ra>0 ? `Suas saídas usam ${pct(total/ra)} da sua renda.` : 'Preencha a sua renda lá embaixo.'; } else
   $('explain').textContent = renda>0
     ? `Proporção pela renda: ${a.nome} ${pct(ra/renda)} e ${b.nome} ${pct(rb/renda)}. Itens marcados como "só" ou "meio a meio" seguem a regra própria.`
     : 'Preencha as rendas do casal lá embaixo para calcular quanto cada um paga.';
@@ -465,7 +470,7 @@ function render(){
   state.rendering=true; list.innerHTML=html; state.rendering=false;
   if(state.inline){ const inp=$('inlineVal'); if(inp){ inp.focus(); inp.setSelectionRange(inp.value.length,inp.value.length) } else state.inline=null }
 }
-function splitTxt(valor,divisao){ const p=partes({valor,divisao}); return `${esc(state.config.a.nome)} ${brl(p.a)} · ${esc(state.config.b.nome)} ${brl(p.b)}` }
+function splitTxt(valor,divisao){ if(SOLO) return ''; const p=partes({valor,divisao}); return `${esc(state.config.a.nome)} ${brl(p.a)} · ${esc(state.config.b.nome)} ${brl(p.b)}` }
 
 function fillIncomes(){
   const {a,b}=state.config;
@@ -476,6 +481,7 @@ function fillIncomes(){
   renderRatio();
 }
 function renderRatio(){
+  if(SOLO) return;
   const r=ratioA(), {a,b}=state.config;
   $('ratio').innerHTML=`<div class="ra" style="width:${r*100}%">${esc(a.nome)} ${pct(r)}</div><div class="rb" style="width:${(1-r)*100}%">${esc(b.nome)} ${pct(1-r)}</div>`;
 }
@@ -640,6 +646,7 @@ $('remove').onclick=async()=>{
   }catch(ex){ $('fErr').textContent='Não foi possível remover. Tente de novo.'; $('fErr').hidden=false }
 };
 
+if(SOLO){ $('incB').hidden=true; $('ratio').hidden=true; $('incHint').textContent='Sua renda mensal. Vale para todos os meses.'; $('h-renda').textContent='Minha renda'; $('lDiv').hidden=true; $('fSplit').hidden=true; }
 render(); fillIncomes();
 Store.init();
 if('serviceWorker' in navigator) window.addEventListener('load',()=>navigator.serviceWorker.register('/sw.js').catch(()=>{}));
