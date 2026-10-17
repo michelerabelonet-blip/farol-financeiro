@@ -100,10 +100,23 @@ app.use('/api', (req, res, next) => {
 app.get('/api/state', rota(async (req, res) => res.json(await getState())));
 
 app.put('/api/config', rota(async (req, res) => {
-  const pessoa = (p, padrao) => ({
-    nome: typeof p?.nome === 'string' && p.nome.trim() ? p.nome.trim().slice(0, 40) : padrao,
-    renda: num(p?.renda) >= 0 ? num(p.renda) : 0,
-  });
+  const pessoa = (p, padrao) => {
+    const o = {
+      nome: typeof p?.nome === 'string' && p.nome.trim() ? p.nome.trim().slice(0, 40) : padrao,
+      renda: num(p?.renda) >= 0 ? num(p.renda) : 0,
+    };
+    if (Array.isArray(p?.fontes)) {
+      const fontes = p.fontes.slice(0, 20).map((f) => ({
+        desc: typeof f?.desc === 'string' ? f.desc.trim().slice(0, 60) : '',
+        valor: num(f?.valor) > 0 ? num(f.valor) : 0,
+      }));
+      if (fontes.length) {
+        o.fontes = fontes;
+        o.renda = Math.round(fontes.reduce((s, f) => s + f.valor, 0) * 100) / 100;
+      }
+    }
+    return o;
+  };
   const s = await mutate((s) => { s.config = { a: pessoa(req.body.a, 'Pessoa 1'), b: pessoa(req.body.b, 'Pessoa 2') }; });
   res.json(s);
 }));

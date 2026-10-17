@@ -87,6 +87,20 @@ button{cursor:pointer}
 .person .meter span{display:block;height:100%;background:var(--beam)}
 .person .foot{font-size:.75rem;color:var(--muted);margin-top:5px}
 
+.person .who-btn{all:unset;box-sizing:border-box;cursor:pointer;display:flex;justify-content:space-between;gap:6px;align-items:baseline;width:100%;font-family:var(--font-display);font-weight:700;font-size:1.05rem;color:var(--ink)}
+.person .who-btn:focus-visible{outline:2px solid var(--beam);outline-offset:3px;border-radius:4px}
+.person .who-btn .chev{color:var(--muted);font-size:.8em;margin-left:4px}
+.person .fontes{list-style:none;margin:8px 0 0;padding:8px 0 0;border-top:1px dashed var(--line);font-size:.8rem}
+.person .fontes li{display:flex;justify-content:space-between;gap:8px;padding:2px 0}
+.person .fontes li span{color:var(--muted);overflow-wrap:anywhere}
+.person .fontes li b{white-space:nowrap}
+.person .fontes .nada{color:var(--muted);font-size:.78rem}
+.fontes-ed{margin:-4px 0 12px;display:grid;gap:6px}
+.fontes-ed .fonte{display:grid;grid-template-columns:1fr 110px 32px;gap:6px}
+.fontes-ed input{width:100%;min-width:0;font:inherit;font-size:.9rem;color:var(--ink);background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:7px 9px}
+.fontes-ed .fx{background:none;border:1px solid var(--line);border-radius:8px;color:var(--muted);font-size:1rem;padding:0}
+.fontes-ed .link{justify-self:start}
+input[readonly]{opacity:.75}
 .explain{font-size:.82rem;color:var(--muted);margin:10px 2px 0}
 
 section.block{margin-top:26px}
@@ -249,12 +263,14 @@ label.f input,label.f select{font-size:1rem;font-weight:400;color:var(--ink);bac
           <label class="f">Nome<input id="nA" autocomplete="off"></label>
           <label class="f">Renda mensal<input id="rA" inputmode="decimal" class="num"></label>
         </div>
+        <div class="fontes-ed" id="fontesA"></div>
         <div class="inc-row" id="incB">
           <label class="f">Nome<input id="nB" autocomplete="off"></label>
           <label class="f">Renda mensal<input id="rB" inputmode="decimal" class="num"></label>
         </div>
+        <div class="fontes-ed" id="fontesB"></div>
         <div class="ratio" id="ratio"></div>
-        <p class="hint" id="incHint" style="margin:0">Na divisão proporcional, cada um paga a mesma porcentagem da própria renda. As alterações valem para todos os meses.</p>
+        <p class="hint" id="incHint" style="margin:0">Na divisão proporcional, cada um paga a mesma porcentagem da própria renda. As alterações valem para todos os meses. Com mais de uma fonte, a renda é a soma delas; toque no nome lá em cima para ver o detalhe.</p>
       </div>
     </section>
   </div>
@@ -325,7 +341,7 @@ const state = {
   mes: now.getFullYear()+'-'+String(now.getMonth()+1).padStart(2,'0'),
   filtro:'todas',
   config:{a:{nome:'Pessoa 1',renda:0},b:{nome:'Pessoa 2',renda:0}},
-  itens:[], pagos:{}, carregado:false, abertos:new Set()
+  itens:[], pagos:{}, carregado:false, abertos:new Set(), rendaAberta:new Set()
 };
 
 /* ---------- armazenamento: servidor do Render, compartilhado pelo casal ---------- */
@@ -339,7 +355,7 @@ $('pinForm').addEventListener('submit',e=>{
   $('pinwrap').hidden=true; Store.refresh();
 });
 const Store = {
-  pinKey:'farol-financeiro-codigo', all:null, timer:null,
+  pinKey:'farol-financeiro-codigo', all:null, timer:null, cfgVer:0,
   pin(){ try{ return localStorage.getItem(this.pinKey)||'' }catch(e){ return '' } },
   async api(method, path, body){
     const r = await fetch('/api'+path,{method,headers:{'Content-Type':'application/json','x-pin':this.pin()},body:body?JSON.stringify(body):undefined});
@@ -347,23 +363,23 @@ const Store = {
     if(!r.ok) throw new Error('http '+r.status);
     return r.json();
   },
-  apply(s){
+  apply(s,manterCfg){
     this.all=s;
-    if(s.config) state.config={a:{...s.config.a},b:{...s.config.b}};
+    if(s.config && !manterCfg) state.config=JSON.parse(JSON.stringify({a:s.config.a,b:s.config.b}));
     state.itens=(s.itens||[]).map(i=>({...i}));
     state.pagos={...(((s.pagos||{})[state.mes])||{})};
     state.carregado=true; fillIncomes();
     if(!state.inline) render();
   },
   async refresh(){
-    try{ this.apply(await this.api('GET','/state')); $('sync').textContent='Sincronizado' }
+    try{ const v=this.cfgVer; const s=await this.api('GET','/state'); this.apply(s, v!==this.cfgVer); $('sync').textContent='Sincronizado' }
     catch(e){ if(e.message!=='codigo') $('sync').textContent='Sem conexão · tentando de novo' }
   },
   async init(){
     $('sync').textContent='Conectando…';
     await this.refresh();
     clearInterval(this.timer);
-    this.timer=setInterval(()=>{ if(!document.hidden && $('sheet').hidden && !state.inline && !state.sel) this.refresh() },15000);
+    this.timer=setInterval(()=>{ if(!document.hidden && $('sheet').hidden && !state.inline && !state.sel && !document.activeElement?.closest?.('.incomes')) this.refresh() },15000);
     document.addEventListener('visibilitychange',()=>{ if(!document.hidden) this.refresh() });
   },
   watchMes(){ state.pagos={...((((this.all||{}).pagos)||{})[state.mes]||{})} },
@@ -375,7 +391,7 @@ const Store = {
     state.itens=state.itens.filter(x=>x.id!==id); render();
     this.apply(await this.api('DELETE','/itens/'+encodeURIComponent(id)));
   },
-  async saveConfig(){ this.apply(await this.api('PUT','/config',state.config)) },
+  async saveConfig(){ const v=++this.cfgVer; const s=await this.api('PUT','/config',state.config); this.apply(s, v!==this.cfgVer) },
   async savePagos(){ this.apply(await this.api('PUT','/pagos/'+state.mes,state.pagos)) }
 };
 const newId = () => 'l'+Date.now().toString(36)+Math.random().toString(36).slice(2,7);
@@ -421,15 +437,16 @@ function render(){
   $('track').innerHTML = ORDER.map(k=>`<span style="width:${(porCat[k]/base*100).toFixed(2)}%;background:${CAT[k].cor}"></span>`).join('');
   $('legend').innerHTML = ORDER.map(k=>`<span><i style="background:${CAT[k].cor}"></i>${CAT[k].curto} <b class="num">${brl(porCat[k])}</b></span>`).join('') + (renda>total?`<span><i style="background:rgba(255,255,255,.25)"></i>Livre <b class="num">${brl(renda-total)}</b></span>`:'');
 
-  const pessoa=(p,paga,share)=>{
-    const r=+p.renda||0, uso=r>0?paga/r:0, sobra=r-paga;
+  const pessoa=(p,paga,share,k)=>{
+    const r=+p.renda||0, uso=r>0?paga/r:0, sobra=r-paga, ab=state.rendaAberta.has(k), fs=p.fontes||[];
+    const lista = ab ? `<ul class="fontes">${fs.some(f=>f.desc||+f.valor) ? fs.filter(f=>f.desc||+f.valor).map(f=>`<li><span>${esc(f.desc||'Sem nome')}</span><b class="num">${brl(+f.valor)}</b></li>`).join('')+`<li><span><b>Total</b></span><b class="num">${brl(r)}</b></li>` : `<li class="nada">Renda única. Cadastre as fontes em "Rendas" lá embaixo.</li>`}</ul>` : '';
     return `<div class="person">
-      <div class="who"><span>${esc(p.nome)}</span><small class="num">${pct(share)} das saídas</small></div>
+      <button class="who-btn who" data-pessoa="${k}" aria-expanded="${ab}"><span>${esc(p.nome)}<span class="chev" aria-hidden="true">${ab?'▾':'▸'}</span></span><small class="num">${pct(share)} das saídas</small></button>${lista}
       <dl class="num"><dt>Renda</dt><dd>${brl(r)}</dd><dt>Paga</dt><dd>${brl(paga)}</dd><dt>Sobra</dt><dd style="color:${sobra<0?'var(--crit)':'inherit'}">${brl(sobra)}</dd></dl>
       <div class="meter"><span style="width:${Math.min(uso,1)*100}%"></span></div>
       <div class="foot num">${pct(uso)} da própria renda</div></div>`;
   };
-  $('couple').innerHTML = SOLO ? pessoa(a,pa,1) : pessoa(a,pa,total?pa/total:0)+pessoa(b,pb,total?pb/total:0);
+  { const h = SOLO ? pessoa(a,pa,1,'a') : pessoa(a,pa,total?pa/total:0,'a')+pessoa(b,pb,total?pb/total:0,'b'); if($('couple').innerHTML!==h) $('couple').innerHTML=h; }
   $('couple').style.gridTemplateColumns = SOLO ? '1fr' : '';
   if(SOLO){ $('explain').textContent = ra>0 ? `Suas saídas usam ${pct(total/ra)} da sua renda.` : 'Preencha a sua renda lá embaixo.'; } else
   $('explain').textContent = renda>0
@@ -524,8 +541,18 @@ function fillIncomes(){
   if(document.activeElement!==$('nB')) $('nB').value=b.nome;
   if(document.activeElement!==$('rA')) $('rA').value=fmtInput(+a.renda);
   if(document.activeElement!==$('rB')) $('rB').value=fmtInput(+b.renda);
+  renderFontes('a'); if(!SOLO) renderFontes('b');
   renderRatio();
 }
+function renderFontes(k,forcar){
+  const box=$(k==='a'?'fontesA':'fontesB'), p=state.config[k], fs=p.fontes||[];
+  $(k==='a'?'rA':'rB').readOnly = fs.length>0;
+  if(!forcar && box.contains(document.activeElement)) return;
+  const h = fs.map((f,i)=>`<div class="fonte"><input data-fd="${k}:${i}" value="${esc(f.desc)}" placeholder="Ex.: Salário, MEI, aluguel" aria-label="Fonte de renda"><input data-fv="${k}:${i}" class="num" inputmode="decimal" value="${fmtInput(+f.valor)}" placeholder="0,00" aria-label="Valor"><button type="button" class="fx" data-fx="${k}:${i}" aria-label="Remover fonte">×</button></div>`).join('')
+    + `<button type="button" class="link" data-fadd="${k}">+ Adicionar fonte de renda${SOLO?'':' de '+esc(p.nome)}</button>`;
+  if(box.innerHTML!==h) box.innerHTML=h;
+}
+function somaFontes(p){ if(p.fontes&&p.fontes.length) p.renda=Math.round(p.fontes.reduce((s,f)=>s+(+f.valor||0),0)*100)/100 }
 function renderRatio(){
   if(SOLO) return;
   const r=ratioA(), {a,b}=state.config;
@@ -585,11 +612,33 @@ $('list').onclick=async e=>{
 };
 
 ['nA','nB','rA','rB'].forEach(id=>$(id).addEventListener('change',async()=>{
-  const ra=parseValor($('rA').value), rb=parseValor($('rB').value);
-  state.config={a:{nome:$('nA').value.trim()||'Pessoa 1',renda:isNaN(ra)?0:ra},b:{nome:$('nB').value.trim()||'Pessoa 2',renda:isNaN(rb)?0:rb}};
+  const ra=parseValor($('rA').value), rb=parseValor($('rB').value), c=state.config;
+  c.a.nome=$('nA').value.trim()||'Pessoa 1'; c.b.nome=$('nB').value.trim()||'Pessoa 2';
+  if(!(c.a.fontes&&c.a.fontes.length)) c.a.renda=isNaN(ra)?0:ra;
+  if(!(c.b.fontes&&c.b.fontes.length)) c.b.renda=isNaN(rb)?0:rb;
   fillIncomes(); render();
   try{ await Store.saveConfig() }catch(e){}
 }));
+$('couple').onclick=e=>{ const b=e.target.closest('[data-pessoa]'); if(!b) return; const k=b.dataset.pessoa; state.rendaAberta.has(k)?state.rendaAberta.delete(k):state.rendaAberta.add(k); render() };
+document.querySelector('.incomes').addEventListener('click',async e=>{
+  const add=e.target.closest('[data-fadd]'), fx=e.target.closest('[data-fx]');
+  if(add){ const p=state.config[add.dataset.fadd]; p.fontes=p.fontes||[];
+    if(!p.fontes.length && +p.renda>0) p.fontes.push({desc:'Renda principal',valor:+p.renda});
+    p.fontes.push({desc:'',valor:0}); Store.cfgVer++; const box=add.parentElement; renderFontes(add.dataset.fadd,true);
+    const ins=box.querySelectorAll('[data-fd]'); ins[ins.length-1]?.focus(); return }
+  if(fx){ const k=fx.dataset.fx.split(':')[0], p=state.config[k], box=fx.closest('.fontes-ed'); fx.closest('.fonte').remove();
+    p.fontes=[...box.querySelectorAll('.fonte')].map(row=>{ const v=parseValor(row.querySelector('[data-fv]').value); return {desc:row.querySelector('[data-fd]').value.trim(),valor:isNaN(v)?0:v} });
+    if(!p.fontes.length) delete p.fontes; else somaFontes(p);
+    document.activeElement?.blur?.(); fillIncomes(); render(); try{ await Store.saveConfig() }catch(err){} }
+});
+document.querySelector('.incomes').addEventListener('change',async e=>{
+  const t=e.target, ref=t.dataset.fd||t.dataset.fv; if(!ref) return;
+  const k=ref.split(':')[0], p=state.config[k], box=$(k==='a'?'fontesA':'fontesB');
+  if(t.dataset.fv){ const v=parseValor(t.value); t.value=isNaN(v)?'':fmtInput(v) }
+  p.fontes=[...box.querySelectorAll('.fonte')].map(row=>{ const v=parseValor(row.querySelector('[data-fv]').value); return {desc:row.querySelector('[data-fd]').value.trim(),valor:isNaN(v)?0:v} });
+  somaFontes(p); $(k==='a'?'rA':'rB').value=fmtInput(+p.renda); renderRatio(); render();
+  try{ await Store.saveConfig() }catch(err){}
+});
 
 $('clearEx').onclick=async()=>{
   const ex=state.itens.filter(i=>i.exemplo);
@@ -700,7 +749,7 @@ $('remove').onclick=async()=>{
   }catch(ex){ $('fErr').textContent='Não foi possível remover. Tente de novo.'; $('fErr').hidden=false }
 };
 
-if(SOLO){ $('incB').hidden=true; $('ratio').hidden=true; $('incHint').textContent='Sua renda mensal. Vale para todos os meses.'; $('h-renda').textContent='Minha renda'; $('lDiv').hidden=true; $('fSplit').hidden=true; }
+if(SOLO){ $('incB').hidden=true; $('ratio').hidden=true; $('incHint').textContent='Sua renda mensal. Vale para todos os meses. Com mais de uma fonte, a renda é a soma delas; toque no seu nome lá em cima para ver o detalhe.'; $('h-renda').textContent='Minha renda'; $('lDiv').hidden=true; $('fSplit').hidden=true; }
 render(); fillIncomes();
 Store.init();
 if('serviceWorker' in navigator) window.addEventListener('load',()=>navigator.serviceWorker.register('/sw.js').catch(()=>{}));
