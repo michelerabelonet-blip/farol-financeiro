@@ -82,6 +82,7 @@ function limparItem(id, b) {
   if (b.fim && YM.test(b.fim)) it.fim = b.fim;
   if (Number.isInteger(b.parcelas) && b.parcelas > 0 && b.parcelas <= 600) it.parcelas = b.parcelas;
   if (b.exemplo === true) it.exemplo = true;
+  if (typeof b.grupo === 'string' && b.grupo.trim()) it.grupo = b.grupo.trim().slice(0, 40);
   return it;
 }
 

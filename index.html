@@ -129,6 +129,11 @@ section.block{margin-top:26px}
 .selbar .btn:disabled{opacity:.45}
 .check.sel[aria-pressed="true"]{background:var(--crit);border-color:var(--crit)}
 .row.selected{background:color-mix(in srgb,var(--crit) 9%,transparent)}
+.row.grp .row-title{font-size:1.02rem}
+.row.grp .chev{color:var(--muted);font-size:.85em}
+.row.grp .row-main .row-title::after{content:none}
+.row.child{padding-left:22px;background:color-mix(in srgb,var(--line) 35%,transparent)}
+.row.child .row-title{font-weight:600}
 .empty{background:var(--surface);border:1px dashed var(--line);border-radius:var(--r);padding:22px;text-align:center;color:var(--muted)}
 .empty p{margin:0 0 14px}
 .btns{display:flex;gap:10px;justify-content:center;flex-wrap:wrap}
@@ -255,6 +260,8 @@ label.f input,label.f select{font-size:1rem;font-weight:400;color:var(--ink);bac
     <h4 id="sheetTitle">Novo lançamento</h4>
     <div class="seg" id="tipoSeg" role="group" aria-label="Categoria"></div>
     <label class="f">Descrição<input id="fDesc" autocomplete="off" placeholder="Ex.: Aluguel"></label>
+    <label class="f">Grupo (opcional)<input id="fGrupo" autocomplete="off" list="sugGrupos" placeholder="Ex.: Alimentação, Moradia, Saúde"></label>
+    <datalist id="sugGrupos"></datalist>
     <datalist id="sugExtras"><option value="Supermercado (extra)"><option value="Açougue (churrasco)"><option value="Açougue (extra)"><option value="Sacolão (extra)"><option value="Panificadora (extra)"><option value="Farmácia (extra)"><option value="Uber (extra)"></datalist>
     <label class="f" id="lValor">Valor (R$)<input id="fValor" inputmode="decimal" class="num" placeholder="0,00"></label>
     <div class="inc-row" id="debtFields" hidden>
@@ -308,7 +315,7 @@ const state = {
   mes: now.getFullYear()+'-'+String(now.getMonth()+1).padStart(2,'0'),
   filtro:'todas',
   config:{a:{nome:'Pessoa 1',renda:0},b:{nome:'Pessoa 2',renda:0}},
-  itens:[], pagos:{}, carregado:false
+  itens:[], pagos:{}, carregado:false, abertos:new Set()
 };
 
 /* ---------- armazenamento: servidor do Render, compartilhado pelo casal ---------- */
@@ -446,7 +453,7 @@ function render(){
     if(!its.length){ if(state.filtro!=='todas') html+=`<div class="empty" style="margin-top:14px"><p>Nada em ${CAT[k].nome.toLowerCase()} neste mês.</p></div>`; return }
     const pagosN=its.filter(i=>state.pagos[i.id]).length;
     html+=`<div class="group" style="--gc:${CAT[k].cor}"><div class="group-h"><span>${CAT[k].nome} · ${pagosN}/${its.length} pagos</span><b class="num">${brl(porCat[k])}</b></div><ul class="rows">`;
-    its.forEach(it=>{
+    const rowHtml=(it,child)=>{
       const p=partes(it), pago=!!state.pagos[it.id];
       let extra='';
       if(it.parcelas){
@@ -454,7 +461,7 @@ function render(){
         extra=`<span>Parcela ${n} de ${it.parcelas}</span><span>Faltam ${brl(rest)}</span>`;
       }
       const selOn=!!state.sel, isSel=selOn&&state.sel.has(it.id);
-      html+=`<li class="row${pago&&!selOn?' pago':''}${isSel?' selected':''}">
+      return `<li class="row${child?' child':''}${pago&&!selOn?' pago':''}${isSel?' selected':''}">
         ${selOn ? `<button class="check sel" data-sel="${it.id}" aria-pressed="${isSel}" aria-label="Selecionar ${esc(it.desc)}">` : `<button class="check" data-pago="${it.id}" aria-pressed="${pago}" aria-label="${pago?'Desmarcar':'Marcar'} ${esc(it.desc)} como pago">`}<svg width="14" height="14" viewBox="0 0 14 14" aria-hidden="true"><path d="M2.5 7.5l3 3 6-7" fill="none" stroke="#fff" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
         <button class="row-main" ${selOn?`data-sel="${it.id}"`:`data-edit="${it.id}"`}>
           <div class="row-title">${esc(it.desc)} ${it.exemplo?'<span class="tag-ex">exemplo</span>':''}</div>
@@ -464,6 +471,24 @@ function render(){
           ? `<div class="row-val num editing"><input id="inlineVal" class="num" inputmode="decimal" value="${esc(state.inlineDraft)}" aria-label="Novo valor de ${esc(it.desc)}"><small id="inlineSplit">${splitTxt(parseValor(state.inlineDraft)||0,it.divisao)}</small></div>`
           : `<div class="row-val num"><button class="valbtn num" data-val="${it.id}" aria-label="Editar valor de ${esc(it.desc)}">${brl(+it.valor)}</button><small>${splitTxt(+it.valor,it.divisao)}</small></div>`}
       </li>`;
+    };
+    const grupos={}; const ordem=[];
+    its.forEach(it=>{ const g=(it.grupo||'').trim(); const k=g?'g:'+g:'i:'+it.id; if(!grupos[k]){grupos[k]={nome:g,itens:[]};ordem.push(k)} grupos[k].itens.push(it) });
+    ordem.sort((x,y)=>grupos[y].itens.reduce((s,i)=>s+(+i.valor||0),0)-grupos[x].itens.reduce((s,i)=>s+(+i.valor||0),0));
+    ordem.forEach(k=>{
+      const g=grupos[k];
+      if(!g.nome){ html+=rowHtml(g.itens[0],false); return }
+      const tot=g.itens.reduce((s,i)=>s+(+i.valor||0),0), pa=g.itens.reduce((s,i)=>s+partes(i).a,0), pb=g.itens.reduce((s,i)=>s+partes(i).b,0);
+      const todosPagos=g.itens.every(i=>state.pagos[i.id]), aberto=state.abertos.has(k), selOn=!!state.sel;
+      html+=`<li class="row grp${todosPagos&&!selOn?' pago':''}">
+        ${selOn?'<span></span>':`<button class="check" data-gpago="${esc(k)}" aria-pressed="${todosPagos}" aria-label="Marcar grupo ${esc(g.nome)} como pago"><svg width="14" height="14" viewBox="0 0 14 14" aria-hidden="true"><path d="M2.5 7.5l3 3 6-7" fill="none" stroke="#fff" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg></button>`}
+        <button class="row-main" data-grupo="${esc(k)}" aria-expanded="${aberto}">
+          <div class="row-title">${esc(g.nome)} <span class="chev" aria-hidden="true">${aberto?'▾':'▸'}</span></div>
+          <div class="row-meta num"><span>${g.itens.length} ${g.itens.length>1?'contas':'conta'} · ${g.itens.filter(i=>state.pagos[i.id]).length} pagas</span></div>
+        </button>
+        <div class="row-val num"><b>${brl(tot)}</b><small>${SOLO?'':`${esc(state.config.a.nome)} ${brl(pa)} · ${esc(state.config.b.nome)} ${brl(pb)}`}</small></div>
+      </li>`;
+      if(aberto||selOn) g.itens.forEach(it=>{ html+=rowHtml(it,true) });
     });
     html+='</ul></div>';
   });
@@ -525,6 +550,10 @@ $('list').onclick=async e=>{
   if(sb && state.sel){ const id=sb.dataset.sel; state.sel.has(id)?state.sel.delete(id):state.sel.add(id); setSelArmed(false); render(); return }
   const vb=e.target.closest('[data-val]');
   if(vb){ const it=state.itens.find(i=>i.id===vb.dataset.val); state.inline=vb.dataset.val; state.inlineDraft=fmtInput(+it.valor); render(); return }
+  const gb=e.target.closest('[data-grupo]');
+  if(gb && !state.sel){ const k=gb.dataset.grupo; state.abertos.has(k)?state.abertos.delete(k):state.abertos.add(k); render(); return }
+  const gp=e.target.closest('[data-gpago]');
+  if(gp){ const nome=gp.dataset.gpago.slice(2); const doMes=state.itens.filter(i=>ativoNoMes(i,state.mes)&&(i.grupo||'').trim()===nome); const todos=doMes.every(i=>state.pagos[i.id]); doMes.forEach(i=>{ if(todos) delete state.pagos[i.id]; else state.pagos[i.id]=true }); render(); try{await Store.savePagos()}catch(err){} return }
   const pg=e.target.closest('[data-pago]');
   if(pg){ const id=pg.dataset.pago; if(state.pagos[id]) delete state.pagos[id]; else state.pagos[id]=true; render(); try{await Store.savePagos()}catch(err){} return }
   const ed=e.target.closest('[data-edit]');
@@ -585,6 +614,9 @@ function openSheet(item){
   tipoSel = item?.tipo || (state.filtro!=='todas'?state.filtro:'fixa');
   $('sheetTitle').textContent = item?'Editar lançamento':'Novo lançamento';
   $('fDesc').value=item?.desc||'';
+  $('fGrupo').value=item?.grupo||'';
+  const gs=new Set(['Alimentação','Moradia','Saúde e proteção','Lazer e internet','Transporte','Família e pet','Educação','Pessoal']); state.itens.forEach(i=>{ if(i.grupo) gs.add(i.grupo) });
+  $('sugGrupos').innerHTML=[...gs].map(g=>`<option value="${esc(g)}">`).join('');
   $('fValor').value=item?fmtInput(+item.valor):'';
   $('fParcelas').value=item?.parcelas||'';
   $('fAtual').value=item?.parcelas ? (ymToIdx(state.mes)-ymToIdx(item.inicio)+1) : '';
@@ -618,6 +650,7 @@ $('form').onsubmit=async e=>{
   if(!(valor>0)) return err('Informe um valor maior que zero.');
   const m=ymToIdx(state.mes);
   const it={id:editing?.id||newId(),tipo:tipoSel,desc,valor,divisao:$('fDiv').value,criado:editing?.criado||Date.now()};
+  const grp=$('fGrupo').value.trim(); if(grp) it.grupo=grp.slice(0,40);
   if(tipoSel==='divida'){
     const tot=parseInt($('fParcelas').value,10), at=parseInt($('fAtual').value||'1',10);
     if(!(tot>0)) return err('Informe o total de parcelas.');
